@@ -3,6 +3,8 @@
 #include <unordered_set>
 #include <mutex>
 #include <string>
+#include <iostream>
+#include <vector>
 
 using namespace std;
 
@@ -11,61 +13,81 @@ struct ChatServer {
 
 	unordered_map<crow :: websocket :: connection* , string> user_to_rooms;
 
-	mutex server_mutex;
+	//mutex server_mutex;
 };
 
 ChatServer chat_server;
+mutex state_mutex;
+
 
 int main() {
     crow::SimpleApp app;
 
-    CROW_ROUTE(app, "/ws")
-        .websocket(&app)
+    CROW_WEBSOCKET_ROUTE(app, "/ws")
         .onopen([&](crow::websocket::connection& conn) {
             CROW_LOG_INFO << "New Client Connected! Address: " << &conn ;
-	    lock_guard<mutex> lock(chat_server.server_mutex);
+	   // lock_guard<mutex> lock(chat_server.server_mutex);
+	    lock_guard<mutex> lock(state_mutex);
 	    string default_room = "looby";
 
 	    chat_server.user_to_rooms[&conn] = default_room;
 
 	    chat_server.rooms[default_room].insert(&conn);
 
-	    CROW_LOG_INFO<< "Client " << &conn << " Successfully locked and loaded into: "<<default_room;
+	   // CROW_LOG_INFO<< "Client " << &conn << " Successfully locked and loaded into: "<<default_room;
+	   cout<< "[INFO] New connnection established. Assigned to room : [" <<default_room << "]" <<endl;	
+ 		
+	})
 
-        })
         .onclose([&](crow::websocket::connection& conn, const std::string& reason) {
             CROW_LOG_INFO << "Client Disconnected. Reason: " << reason;
-	    lock_guard<mutex> lock(chat_server.server_mutex);
-	    if(chat_server.user_to_rooms.count(&conn)){
-	    	string room_name = chat_server.user_to_rooms[&conn];
-		
-		chat_server.rooms[room_name].erase(&conn);
-		chat_server.user_to_rooms.erase(&conn);
+	    //lock_guard<mutex> lock(chat_server.server_mutex);
+	    lock_guard<mutex> lock(state_mutex);
+	    auto it = chat_server.user_to_rooms.find(&conn);
+	    if(it != chat_server.user_to_rooms.end()){
+		string room_name = it->second;
 
-		CROW_LOG_INFO<< "Clean-up Successful. Removed Pointer " << &conn << "from: " << room_name;
- 		}
+		chat_server.rooms[room_name].erase(&conn);
+		chat_server.user_to_rooms.erase(it);
+
+		if(chat_server.rooms[room_name].empty()){
+			chat_server.rooms.erase(room_name);
+		}
+	     	cout<<"[INFO] Connection closed safely. Cleaned up tracking memory maps." <<endl;
+	    }
 	})
         .onmessage([&](crow::websocket::connection& conn, const std::string& data, bool is_binary) {
-        	if(is_binary) return;
-
-		string user_room = "";
-		unordered_set<crow :: websocket :: connection*> clients_in_room;
-
-		{
-			lock_guard<mutex> lock(chat_server.server_mutex);
-			if(chat_server.user_to_rooms.count(&conn)){
-			user_room = chat_server.user_to_rooms[&conn];
-			clients_in_room = chat_server.rooms[user_room];
-			}
+        	if(is_binary){
+			cout<<"[WARN] Binary frame received. Discarding the message"<<endl;
+			return ;
 		}
 
-		CROW_LOG_INFO << "User " << &conn << " sent message to room [" << user_room << "]";
+		vector<crow :: websocket :: connection*> clients_in_room;
 
-		for(auto& client : clients_in_room){
-			if(client != &conn){
-				client->send_text("Room [" + user_room + "] : " + data);
+		{
+			//lock_guard<mutex> lock(chat_server.server_mutex);
+			lock_guard<mutex> lock(state_mutex);
+			auto it = chat_server.user_to_rooms.find(&conn);
+			if(it != chat_server.user_to_rooms.end()){
+				string room_name = it->second;
+
+				for(auto* client : chat_server.rooms[room_name]){
+					if(client != &conn){
+						clients_in_room.push_back(client);
+					}
 				}
 			}
-		});
+		}
+		string broadcast_msg = "User: " + data;
+		for(auto* client : clients_in_room){
+				client->send_text(broadcast_msg);
+			}
+		conn.send_text("Server Echo: " + data);
+
+	});
+	
 	app.port(8080).multithreaded().run();
 }
+
+
+
