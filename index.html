@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<title>WSL C++ WebSocket Chat Client</title>
+		<style>
+body { font-family: sans-serif; background: #121212; color: #fff; max-width: 600px; margin: 40px auto; padding: 20px; }
+#chatbox { height: 300px; border: 1px solid #333; background: #1a1a1a; padding: 10px; overflow-y: scroll; margin-bottom: 10px; border-radius: 6px; }
+#messageInput { width: 75%; padding: 10px; background: #2a2a2a; color: white; border: none; border-radius: 4px; }
+button { width: 20%; padding: 10px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+.system-msg { color: #888; font-style: italic; }
+		</style>
+	</head>
+	<body>
+		<h2>C++ Chat Server Client</h2>
+		<div id="chatbox"></div>
+		<input type="text" id="messageInput" placeholder="Type a message...">
+		<button onclick="sendMessage()">Send</button>
+
+		<script>
+			// Connect to your local C++ server running inside WSL2
+			const ws = new WebSocket("ws://localhost:8080/ws");
+			const chatbox = document.getElementById("chatbox");
+			const messageInput = document.getElementById("messageInput");
+
+			ws.onopen = () => {
+				appendMessage("System", "Connected to C++ Backend Server!", true);
+			};
+
+			ws.onmessage = (event) => {
+				appendMessage("Incoming", event.data, false);
+			};
+
+			ws.onclose = () => {
+				appendMessage("System", "Disconnected from server.", true);
+			};
+
+			function sendMessage() {
+				const text = messageInput.value.trim();
+				if (text && ws.readyState === WebSocket.OPEN) {
+					ws.send(text);
+					appendMessage("Me", text, false);
+					messageInput.value = "";
+				}
+			}
+
+			function appendMessage(sender, text, isSystem) {
+				const msgEl = document.createElement("div");
+				if (isSystem) {
+					msgEl.className = "system-msg";
+					msgEl.innerText = `[${sender}] ${text}`;
+				} else {
+					msgEl.innerText = sender === "Me" ? `You: ${text}` : text;
+				}
+				chatbox.appendChild(msgEl);
+				chatbox.scrollTop = chatbox.scrollHeight; // Auto scroll down
+			}
+
+			// Listen for Enter keypress
+			messageInput.addEventListener("keypress", (e) => {
+				if (e.key === "Enter") sendMessage();
+			});
+		</script>
+	</body>
+</html>

@@ -1,0 +1,21 @@
+config:
+  # Provide the absolute path to your Crow WebSocket route directly
+  target: "ws://localhost:8080/ws"
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: "Warm-up Phase"
+    - duration: 60
+      arrivalRate: 20
+      name: "Heavy Load Spike"
+scenarios:
+  - name: "Simulate an active chatter in the lobby room"
+    engine: ws
+    flow:
+      # The engine connects to the target automatically, so we jump straight to data actions!
+      - send: "Hello everyone, testing connection stability!"
+      - think: 1
+      - send: "Is anyone seeing latency drops?"
+      - think: 2
+      - send: "C++ threading handles this perfectly."
+      - think: 1
